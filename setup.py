@@ -9,7 +9,7 @@ setuptools.setup(
     version = "0.1.0",
     author = "Antonio Germán Márquez Trujillo",
     author_email = "amtrujillo@us.es",
-    description = "Una herramienta para el análisis de vulnerabilidades en proyectos software open-source",
+    description = "This repo host the SMT model concrete classes",
     long_description = long_description,
     long_description_content_type = "text/markdown",
     url = "https://github.com/GermanMT/smt_metamodel",
