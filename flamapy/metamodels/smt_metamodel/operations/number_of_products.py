@@ -1,29 +1,28 @@
 from z3 import And, Or, Solver, sat
 
-from smt_metamodel.models.pysmt_model import PySMTModel
-
-from famapy.core.operations import Operation
+from flamapy.core.operations import Operation
+from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
 
 
 class NumberOfProducts(Operation):
 
     def __init__(self) -> None:
-        self.__result: int = 0
+        self.result: int = 0
 
     def get_result(self) -> int:
-        return self.__result
+        return self.result
 
-    def execute(self, smt_model: PySMTModel) -> None:
-        formula = And(smt_model.domains)
+    def execute(self, model: PySMTModel) -> None:
+        formula = And(model.domains)
         solver = Solver()
         solver.add(formula)
         while solver.check() == sat:
             config = solver.model()
 
-            block = list()
+            block = []
             for var in config:
                 c = var()
                 block.append(c != config[var])
 
             solver.add(Or(block))
-            self.__result += 1
+            self.result += 1
