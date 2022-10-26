@@ -3,7 +3,7 @@ from z3 import And, Or, Solver, sat
 from sys import maxsize
 
 from flamapy.core.operations import Operation
-from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
+from flamapy.metamodels.smt_metamodel.models import PySMTModel
 
 
 class FilterConfigs(Operation):

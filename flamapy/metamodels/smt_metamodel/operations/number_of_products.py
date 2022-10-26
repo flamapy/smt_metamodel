@@ -1,7 +1,7 @@
 from z3 import And, Or, Solver, sat
 
 from flamapy.core.operations import Operation
-from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
+from flamapy.metamodels.smt_metamodel.models import PySMTModel
 
 
 class NumberOfProducts(Operation):
