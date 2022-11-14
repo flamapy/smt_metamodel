@@ -1,4 +1,4 @@
-from z3 import And, Or, Optimize, sat
+from z3 import And, Or, Optimize, sat, ModelRef
 
 from sys import maxsize
 
@@ -13,18 +13,18 @@ class MaximizeImpact(Operation):
         limit: int = maxsize
         ) -> None:
         self.limit: int = limit
-        self.result: list = []
+        self.result: list[ModelRef] = []
 
-    def get_result(self) -> list:
+    def get_result(self) -> list[ModelRef]:
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
         _domains = []
-        _domains.extend(model.get_domains())
+        _domains.extend(model.domains)
 
         solver = Optimize()
-        if model.get_vars():
-            CVSSt = model.get_vars()[0]
+        if model.vars:
+            CVSSt = model.vars[0]
             solver.maximize(CVSSt)
 
         formula = And(_domains)
@@ -34,8 +34,8 @@ class MaximizeImpact(Operation):
             self.result.append(config)
 
             block = []
-            for var in config: # var is a declaration of a smt variable
-                c = var() # create a constant from declaration
+            for var in config:
+                c = var()
                 block.append(c != config[var])
 
             solver.add(Or(block))
