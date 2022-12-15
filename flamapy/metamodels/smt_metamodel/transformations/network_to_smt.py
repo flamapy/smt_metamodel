@@ -1,4 +1,4 @@
-from z3 import And, ArithRef, BoolRef, Implies, Int, Or, Real
+from z3 import And, ArithRef, BoolRef, Implies, Int, Or, Real, Not
 
 from flamapy.core.transformations import ModelToModel
 from flamapy.metamodels.dn_metamodel.models import (
@@ -24,6 +24,8 @@ class NetworkToSMT(ModelToModel):
         self.agregator: str | None = agregator
         self.destination_model: PySMTModel = PySMTModel()
         self.vars: dict[str, ArithRef] = {}
+        self.childs: dict[BoolRef, list[BoolRef]] = {}
+        self.parents: dict[ArithRef, list[BoolRef]] = {}
         self.cvss_p: list[ArithRef] = []
         self.domain: list[BoolRef] = []
         self.ctcs: list[str] = []
@@ -32,6 +34,7 @@ class NetworkToSMT(ModelToModel):
         if self.source_model.requirement_files:
             for requirement_file in self.source_model.requirement_files:
                 self.transform_direct_packages(requirement_file.packages)
+                self.build_indirect_constraints()
 
                 cvss_f_name = 'CVSS' + requirement_file.name
                 cvss_f_var = Real(cvss_f_name)
@@ -62,7 +65,7 @@ class NetworkToSMT(ModelToModel):
                 var = self.vars[package.name]
                 cvss_p_var = self.vars['CVSS' + package.name]
 
-            self.build_constraint(var, package.versions)
+            self.build_direct_contraint(var, package.versions)
 
             self.transform_versions(package.versions, var, cvss_p_var)
 
@@ -72,23 +75,17 @@ class NetworkToSMT(ModelToModel):
         var: ArithRef,
         cvss_p_var: ArithRef
     ) -> None:
-        versions_ctcs: list[BoolRef] = []
-
         for version in versions:
-            if str(var) + str(version.count) not in self.ctcs:
+            key = str(var) + str(version.count)
+            if key not in self.ctcs:
                 impacts = self.get_impacts(version)
                 v_impact = self.agregate(impacts) if impacts else 0.
                 ctc = Implies(var == version.count, cvss_p_var == v_impact)
-                versions_ctcs.append(ctc)
-                self.ctcs.append(str(var) + str(version.count))
+                self.domain.append(ctc)
+                self.ctcs.append(key)
+                self.transform_indirect_packages(version.packages, var, version.count)
 
-                # TODO: Terminar construcción del SMT más allá de las dependencias directas
-                # Detenido por aumentar la complejidad del modelo sat, haciéndolo irresoluble
-                # self.transform_indirect_packages(version.packages, var == version.count)
-
-        self.domain.extend(versions_ctcs)
-
-    def transform_indirect_packages(self, packages: list[Package]) -> None:
+    def transform_indirect_packages(self, packages: list[Package], parent: ArithRef, version: int) -> None:
         for package in packages:
             if package.name not in self.vars:
                 var = Int(package.name)
@@ -98,11 +95,14 @@ class NetworkToSMT(ModelToModel):
                 cvss_p_var = Real(cvss_p_name)
                 self.vars[cvss_p_name] = cvss_p_var
                 self.cvss_p.append(cvss_p_var)
+
+                ctc = Implies(var == -1, cvss_p_var == 0.)
+                self.domain.append(ctc)
             else:
                 var = self.vars[package.name]
                 cvss_p_var = self.vars['CVSS' + package.name]
 
-            self.build_constraint(var, package.versions)
+            self.append_indirect_constraint(var, package.versions, parent, version)
 
             self.transform_versions(package.versions, var, cvss_p_var)
 
@@ -121,10 +121,29 @@ class NetworkToSMT(ModelToModel):
 
         return impacts
 
-    def build_constraint(self, var: ArithRef, versions: list[Version]) -> None:
+    def build_direct_contraint(self, var: ArithRef, versions: list[Version]) -> None:
         constraint = [var == version.count for version in versions]
-        if constraint:
-            self.domain.append(Or(constraint))
+        self.domain.append(Or(constraint))
+
+    def append_indirect_constraint(self, var: ArithRef, versions: list[Version], parent: ArithRef | None = None, version: int | None = None) -> None:
+        parts = [var == version.count for version in versions]
+        versions = Or(parts)
+
+        if versions in self.childs:
+            self.childs[versions].append(parent == version)
+        else:
+            self.childs[versions] = [parent == version]
+
+        if var in self.parents:
+            self.parents[var].append(parent == version)
+        else:
+            self.parents[var] = [parent == version]
+
+    def build_indirect_constraints(self) -> None:
+        for versions, parents in self.childs.items():
+            self.domain.append(Implies(Or(parents), versions))
+        for var, parents in self.parents.items():
+            self.domain.append(Implies(Not(Or(parents)), var == -1))
 
     # TODO: Posibilidad de añadir nuevas métricas
     def agregate(
@@ -141,6 +160,10 @@ class NetworkToSMT(ModelToModel):
                 return self.mean(impacts)
 
     @staticmethod
+    def obj_func(problems: list[ArithRef | float]) -> float:
+        return sum(problems)
+
+    @staticmethod
     def mean(problems: list[ArithRef | float]) -> float:
         return sum(problems) / len(problems)
 
@@ -155,7 +178,3 @@ class NetworkToSMT(ModelToModel):
             divisors += weight
 
         return dividends / divisors
-
-    @staticmethod
-    def obj_func(problems: list[ArithRef | float]) -> float:
-        return sum(problems)
