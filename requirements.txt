@@ -1,3 +1,3 @@
 z3-solver==4.11.2.0
 flamapy==1.0.1
-flamapy-dn==1.1.3
+flamapy-dn==1.1.4

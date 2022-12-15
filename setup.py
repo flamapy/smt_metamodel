@@ -22,7 +22,7 @@ setuptools.setup(
     install_requires=[
         'z3-solver==4.11.2.0',
         'flamapy==1.0.1',
-        'flamapy-dn==1.1.3'
+        'flamapy-dn==1.1.4'
     ],
     tests_requires=[
         'prospector[with_everything]==1.8.3',
