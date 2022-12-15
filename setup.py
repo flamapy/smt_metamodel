@@ -25,7 +25,7 @@ setuptools.setup(
         'flamapy-dn==1.1.3'
     ],
     tests_requires=[
-        'prospector[with_everything]==1.7.7',
+        'prospector[with_everything]==1.8.3',
         'mypy==0.982',
         'types-setuptools==65.4.0'
     ]
