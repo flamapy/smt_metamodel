@@ -85,7 +85,12 @@ class NetworkToSMT(ModelToModel):
                 self.ctcs.append(key)
                 self.transform_indirect_packages(version.packages, var, version.count)
 
-    def transform_indirect_packages(self, packages: list[Package], parent: ArithRef, version: int) -> None:
+    def transform_indirect_packages(
+        self,
+        packages: list[Package],
+        parent: ArithRef,
+        version: int
+    ) -> None:
         for package in packages:
             if package.name not in self.vars:
                 var = Int(package.name)
@@ -125,7 +130,13 @@ class NetworkToSMT(ModelToModel):
         constraint = [var == version.count for version in versions]
         self.domain.append(Or(constraint))
 
-    def append_indirect_constraint(self, var: ArithRef, versions: list[Version], parent: ArithRef | None = None, version: int | None = None) -> None:
+    def append_indirect_constraint(
+        self,
+        var: ArithRef,
+        versions: list[Version],
+        parent: ArithRef | None = None,
+        version: int | None = None
+    ) -> None:
         parts = [var == version.count for version in versions]
         versions = Or(parts)
 
