@@ -32,15 +32,16 @@ class FilterConfigs(Operation):
         solver = Solver()
         formula = And([model.domains[self.file_name], max_ctc, min_ctc])
         solver.add(formula)
-        while solver.check() == sat and len(self.result) < self.limit:
+        while len(self.result) < self.limit and solver.check() == sat:
             config = solver.model()
-            if config:
-                sanitized_config = config_sanitizer(config)
-                self.result.append(sanitized_config)
+            sanitized_config = config_sanitizer(config)
+            self.result.append(sanitized_config)
 
             block = []
             for var in config:
-                variable = var()
-                block.append(variable != config[var])
+                if str(var) != '/0':
+                    variable = var()
+                    if 'CVSS' not in str(variable):
+                        block.append(config[var] != variable)
 
             solver.add(Or(block))

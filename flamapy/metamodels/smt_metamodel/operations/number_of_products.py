@@ -22,8 +22,10 @@ class NumberOfProducts(Operation):
 
             block = []
             for var in config:
-                variable = var()
-                block.append(variable != config[var])
+                if str(var) != '/0':
+                    variable = var()
+                    if 'CVSS' not in str(variable):
+                        block.append(config[var] != variable)
 
             solver.add(Or(block))
             self.result += 1
