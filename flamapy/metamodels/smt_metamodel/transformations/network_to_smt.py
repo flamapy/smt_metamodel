@@ -28,13 +28,16 @@ class NetworkToSMT(ModelToModel):
         self.parents: dict[ArithRef, list[BoolRef]] = {}
         self.cvss_p: list[ArithRef] = []
         self.domain: list[BoolRef] = []
-        self.ctcs: list[str] = []
+        self.distributions: list[str] = []
+        self.ctcs: list[BoolRef] = []
+        self.directs: list[str] = []
 
     def transform(self) -> None:
         if self.source_model.requirement_files:
             for requirement_file in self.source_model.requirement_files:
                 self.transform_direct_packages(requirement_file.packages)
                 self.build_indirect_constraints()
+                self.domain.extend(self.ctcs)
 
                 cvss_f_name = 'CVSS' + requirement_file.name
                 cvss_f_var = Real(cvss_f_name)
@@ -52,6 +55,8 @@ class NetworkToSMT(ModelToModel):
                 self.cvss_p.clear()
 
     def transform_direct_packages(self, packages: list[Package]) -> None:
+        for package in packages:
+            self.directs.append(package.name)
         for package in packages:
             if package.name not in self.vars:
                 var = Int(package.name)
@@ -76,13 +81,13 @@ class NetworkToSMT(ModelToModel):
         cvss_p_var: ArithRef
     ) -> None:
         for version in versions:
-            key = str(var) + str(version.count)
-            if key not in self.ctcs:
+            key = str(var) + '-' + str(version.count)
+            if key not in self.distributions:
                 impacts = self.get_impacts(version)
                 v_impact = self.agregate(impacts) if impacts else 0.
                 ctc = Implies(var == version.count, cvss_p_var == v_impact)
-                self.domain.append(ctc)
-                self.ctcs.append(key)
+                self.ctcs.append(ctc)
+                self.distributions.append(key)
                 self.transform_indirect_packages(version.packages, var, version.count)
 
     def transform_indirect_packages(
@@ -102,7 +107,7 @@ class NetworkToSMT(ModelToModel):
                 self.cvss_p.append(cvss_p_var)
 
                 ctc = Implies(var == -1, cvss_p_var == 0.)
-                self.domain.append(ctc)
+                self.ctcs.append(ctc)
             else:
                 var = self.vars[package.name]
                 cvss_p_var = self.vars['CVSS' + package.name]
@@ -128,27 +133,31 @@ class NetworkToSMT(ModelToModel):
 
     def build_direct_contraint(self, var: ArithRef, versions: list[Version]) -> None:
         constraint = [var == version.count for version in versions]
-        self.domain.append(Or(constraint))
+        if constraint:
+            self.domain.append(Or(constraint))
 
     def append_indirect_constraint(
         self,
         var: ArithRef,
         versions: list[Version],
-        parent: ArithRef | None = None,
-        version: int | None = None
+        parent: ArithRef,
+        version: int
     ) -> None:
+        _ = versions[0]
         parts = [var == version.count for version in versions]
-        versions = Or(parts)
+        if parts:
+            versions = Or(parts)
 
-        if versions in self.childs:
-            self.childs[versions].append(parent == version)
-        else:
-            self.childs[versions] = [parent == version]
+            if versions in self.childs:
+                self.childs[versions].append(parent == version)
+            else:
+                self.childs[versions] = [parent == version]
 
-        if var in self.parents:
-            self.parents[var].append(parent == version)
-        else:
-            self.parents[var] = [parent == version]
+        if str(var) not in self.directs:
+            if var in self.parents:
+                self.parents[var].append(parent == version)
+            else:
+                self.parents[var] = [parent == version]
 
     def build_indirect_constraints(self) -> None:
         for versions, parents in self.childs.items():
