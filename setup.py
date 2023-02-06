@@ -5,13 +5,13 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='flamapy-smt',
-    version='1.1.0',
+    version='1.2.0',
     author='Antonio Germán Márquez Trujillo',
     author_email='amtrujillo@us.es',
     description='This repo host the SMT model concrete classes',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/GermanMT/dependency_network_metamodel',
+    url='https://github.com/flamapy/smt_metamodel',
     packages=setuptools.find_namespace_packages(include=['flamapy.*']),
     classifiers=[
         'Programming Language :: Python :: 3',
@@ -22,7 +22,7 @@ setuptools.setup(
     install_requires=[
         'z3-solver==4.11.2.0',
         'flamapy==1.0.1',
-        'flamapy-dn==1.1.4'
+        'flamapy-dn==1.1.5'
     ],
     tests_requires=[
         'prospector[with_everything]==1.8.3',
