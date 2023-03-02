@@ -1,4 +1,4 @@
-from z3 import And, Or, Solver, sat, ModelRef
+from z3 import And, Or, Solver, sat
 
 from flamapy.core.operations import Operation
 from flamapy.metamodels.smt_metamodel.models import PySMTModel
@@ -18,9 +18,9 @@ class FilterConfigs(Operation):
         self.max_threshold: float = max_threshold
         self.min_threshold: float = min_threshold
         self.limit: int = limit
-        self.result: list[ModelRef] = []
+        self.result: list[dict[str, float | int]] = []
 
-    def get_result(self) -> list[ModelRef]:
+    def get_result(self) -> list[dict[str, float | int]]:
         return self.result
 
     def execute(self, model: PySMTModel) -> None:

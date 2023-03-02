@@ -1,4 +1,4 @@
-from z3 import Or, Optimize, sat, ModelRef
+from z3 import Or, Optimize, sat
 
 from flamapy.core.operations import Operation
 from flamapy.metamodels.smt_metamodel.models import PySMTModel
@@ -14,9 +14,9 @@ class MaximizeImpact(Operation):
     ) -> None:
         self.file_name: str = file_name
         self.limit: int = limit
-        self.result: list[ModelRef] = []
+        self.result: list[dict[str, float | int]] = []
 
-    def get_result(self) -> list[ModelRef]:
+    def get_result(self) -> list[dict[str, float | int]]:
         return self.result
 
     def execute(self, model: PySMTModel) -> None:

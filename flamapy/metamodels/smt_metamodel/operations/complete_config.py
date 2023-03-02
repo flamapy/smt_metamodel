@@ -1,4 +1,4 @@
-from z3 import Int, sat, ModelRef, Optimize
+from z3 import Int, sat, Optimize
 
 from flamapy.core.operations import Operation
 from flamapy.metamodels.smt_metamodel.models import PySMTModel
@@ -14,9 +14,9 @@ class CompleteConfig(Operation):
     ) -> None:
         self.file_name: str = file_name
         self.config: dict[str, int] = config
-        self.result: list[ModelRef] = []
+        self.result: dict[str, float | int] = {}
 
-    def get_result(self) -> list[ModelRef]:
+    def get_result(self) -> dict[str, float | int]:
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
@@ -33,5 +33,5 @@ class CompleteConfig(Operation):
         while solver.check() == sat:
             config = solver.model()
             sanitized_config = config_sanitizer(config)
-            self.result.append(sanitized_config)
+            self.result = sanitized_config
             break
