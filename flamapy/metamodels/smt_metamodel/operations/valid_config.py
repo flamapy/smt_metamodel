@@ -8,10 +8,8 @@ class ValidConfig(Operation):
 
     def __init__(
         self,
-        file_name: str,
         config: dict[str, int]
     ) -> None:
-        self.file_name: str = file_name
         self.config: dict[str, int] = config
         self.result: bool = True
 
@@ -19,7 +17,7 @@ class ValidConfig(Operation):
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
-        formula = model.domains[self.file_name]
+        formula = model.domain
         solver = Solver()
         solver.add(formula)
         for package, count in self.config.items():

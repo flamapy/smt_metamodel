@@ -1,3 +1,3 @@
-from .network_to_smt import NetworkToSMT
+from .graph_to_smt import GraphToSMT
 
-__all__ = ['NetworkToSMT']
+__all__ = ['GraphToSMT']

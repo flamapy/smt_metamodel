@@ -10,5 +10,5 @@ class PySMTModel(VariabilityModel):
         return 'pysmt'
 
     def __init__(self) -> None:
-        self.domains: dict[str, BoolRef] = {}
-        self.cvvs: dict[str, ArithRef] = {}
+        self.domain: BoolRef = None
+        self.func_obj_var: ArithRef = None

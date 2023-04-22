@@ -9,10 +9,8 @@ class MaximizeImpact(Operation):
 
     def __init__(
         self,
-        file_name: str,
         limit: int
     ) -> None:
-        self.file_name: str = file_name
         self.limit: int = limit
         self.result: list[dict[str, float | int]] = []
 
@@ -21,11 +19,11 @@ class MaximizeImpact(Operation):
 
     def execute(self, model: PySMTModel) -> None:
         solver = Optimize()
-        if model.cvvs:
-            cvss_f = model.cvvs[self.file_name]
+        if model.func_obj_var is not None:
+            cvss_f = model.func_obj_var
             solver.maximize(cvss_f)
 
-        formula = model.domains[self.file_name]
+        formula = model.domain
         solver.add(formula)
         while len(self.result) < self.limit and solver.check() == sat:
             config = solver.model()
