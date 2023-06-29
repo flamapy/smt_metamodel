@@ -4,6 +4,9 @@ from operator import eq, lt, gt, le, ge
 
 from z3 import And, ArithRef, BoolRef, Implies, Int, Or, Real, Not
 
+from univers.versions import Version
+from univers.version_range import VersionRange
+
 from flamapy.core.transformations import Transformation
 from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
 
@@ -214,24 +217,24 @@ class GraphToSMT(Transformation):
         for var, parents in self.parents.items():
             self.domain.append(Implies(Not(Or(parents)), var == -1))
 
-    def get_version_range_type(self):
+    def get_version_range_type(self) -> tuple[Version, VersionRange]:
         match self.package_manager:
             case 'PIP':
                 from univers.versions import PypiVersion
                 from univers.version_range import PypiVersionRange
-                return (PypiVersion, PypiVersionRange)
+                return PypiVersion, PypiVersionRange
             case 'NPM':
                 from univers.versions import SemverVersion
                 from univers.version_range import NpmVersionRange
-                return (SemverVersion, NpmVersionRange)
+                return SemverVersion, NpmVersionRange
             case 'MVN':
                 from univers.versions import MavenVersion
                 from univers.version_range import MavenVersionRange
-                return (MavenVersion, MavenVersionRange)
+                return MavenVersion, MavenVersionRange
             case _:
                 from univers.versions import PypiVersion
                 from univers.version_range import PypiVersionRange
-                return (PypiVersion, PypiVersionRange)
+                return PypiVersion, PypiVersionRange
 
     # TODO: Posibilidad de añadir nuevas métricas
     def agregate(

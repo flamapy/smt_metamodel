@@ -25,7 +25,7 @@ setuptools.setup(
     ],
     tests_requires=[
         'prospector[with_everything]==1.10.2',
-        'mypy==1.4.1',
+        'mypy==0.982',
         'types-setuptools==68.0.0.0'
     ]
 )
