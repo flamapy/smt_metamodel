@@ -4,8 +4,6 @@ from operator import eq, lt, gt, le, ge
 
 from z3 import And, ArithRef, BoolRef, Implies, Int, Or, Real, Not
 
-from packaging.version import parse
-
 from flamapy.core.transformations import Transformation
 from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
 
@@ -24,13 +22,16 @@ class GraphToSMT(Transformation):
         self,
         source_data: dict[str, Any],
         file_name: str,
+        package_manager: str,
         agregator: str | None = None
     ) -> None:
         self.source_data: dict[str, Any] = source_data
-        self.file_name = file_name
+        self.file_name: str = file_name
+        self.package_manager: str = package_manager
         self.agregator: str | None = agregator
         self.destination_model: PySMTModel = PySMTModel()
-        self.dependency_versiones: dict[str, Any] = self.match_dependency_versions()
+        self.dependency_versions: dict[str, Any] = self.match_dependency_versions()
+        self.version_type, self.range_type = self.get_version_range_type()
         self.vars: dict[str, ArithRef] = {}
         self.childs: dict[BoolRef, list[BoolRef]] = {}
         self.parents: dict[ArithRef, list[BoolRef]] = {}
@@ -48,15 +49,15 @@ class GraphToSMT(Transformation):
         }
 
     def match_dependency_versions(self) -> dict[str, Any]:
-        dependency_versiones: dict[str, Any] = {}
+        dependency_versions: dict[str, Any] = {}
         for rel_have in self.source_data['have']:
-            if rel_have['dependency'] in dependency_versiones:
+            if rel_have['dependency'] in dependency_versions:
                 dependency = rel_have.pop('dependency')
-                dependency_versiones[dependency].append(rel_have)
+                dependency_versions[dependency].append(rel_have)
             else:
                 dependency = rel_have.pop('dependency')
-                dependency_versiones[dependency] = [rel_have]
-        return dependency_versiones
+                dependency_versions[dependency] = [rel_have]
+        return dependency_versions
 
     def transform(self) -> None:
         for rel_requires in self.source_data['requires']:
@@ -158,27 +159,28 @@ class GraphToSMT(Transformation):
                 self.distributions.append(key)
 
     def get_parent_name(self, version_id: str) -> str:
-        for dependency, versions in self.dependency_versiones.items():
+        for dependency, versions in self.dependency_versions.items():
             for version in versions:
                 if version['id'] == version_id:
                     return dependency
         return ''
 
-    def filter_versions(self, dependency: str, constraints: list[str]) -> list[dict[str, Any]]:
+    def filter_versions(self, dependency: str, constraints: str) -> list[dict[str, Any]]:
         filtered_versions = []
         if constraints != 'any':
-            for version in self.dependency_versiones[dependency]:
+            for version in self.dependency_versions[dependency]:
                 check = True
-                for constraint in constraints:
-                    operator, value = constraint.split(' ')
-                    check = check and self.operations[operator](
-                        parse(version['release']),
-                        parse(value)
-                    )
+                if self.package_manager == 'PIP':
+                    for constraint in constraints.split(','):
+                        versions_range = self.range_type.from_native(constraint)
+                        check = check and self.version_type(version['release']) in versions_range
+                else:
+                    versions_range = self.range_type.from_native(constraints)
+                    check = check and self.version_type(version['release']) in versions_range
                 if check:
                     filtered_versions.append(version)
             return filtered_versions
-        return self.dependency_versiones[dependency]
+        return self.dependency_versions[dependency]
 
     def build_direct_contraint(self, var: ArithRef, versions: list[dict[str, Any]]) -> None:
         constraint = [var == version['count'] for version in versions]
@@ -195,7 +197,6 @@ class GraphToSMT(Transformation):
         parts = [var == version['count'] for version in versions]
         if parts:
             versions = Or(parts)
-
             if versions in self.childs:
                 self.childs[versions].append(parent == version)
             else:
@@ -212,6 +213,25 @@ class GraphToSMT(Transformation):
             self.domain.append(Implies(Or(parents), versions))
         for var, parents in self.parents.items():
             self.domain.append(Implies(Not(Or(parents)), var == -1))
+
+    def get_version_range_type(self):
+        match self.package_manager:
+            case 'PIP':
+                from univers.versions import PypiVersion
+                from univers.version_range import PypiVersionRange
+                return (PypiVersion, PypiVersionRange)
+            case 'NPM':
+                from univers.versions import SemverVersion
+                from univers.version_range import NpmVersionRange
+                return (SemverVersion, NpmVersionRange)
+            case 'MVN':
+                from univers.versions import MavenVersion
+                from univers.version_range import MavenVersionRange
+                return (MavenVersion, MavenVersionRange)
+            case _:
+                from univers.versions import PypiVersion
+                from univers.version_range import PypiVersionRange
+                return (PypiVersion, PypiVersionRange)
 
     # TODO: Posibilidad de añadir nuevas métricas
     def agregate(

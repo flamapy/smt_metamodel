@@ -5,6 +5,7 @@ doc-warnings: false
 pylint:
   disable:
     - too-many-instance-attributes
+    - import-outside-toplevel
 
 mccabe:
   run: true
