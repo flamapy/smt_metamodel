@@ -153,8 +153,6 @@ class GraphToSMT(Transformation):
                 check = True
                 try:
                     versions_range = self.range_type.from_native(constraints)
-                    print(univers_version)
-                    print(versions_range)
                     check = check and univers_version in versions_range
                 except InvalidVersionRange:
                     continue
