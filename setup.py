@@ -5,7 +5,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='flamapy-smt',
-    version='1.3',
+    version='1.3.1',
     author='Antonio Germán Márquez Trujillo',
     author_email='amtrujillo@us.es',
     description='This repo host the SMT model concrete classes',
