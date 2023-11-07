@@ -6,6 +6,7 @@ pylint:
   disable:
     - too-many-instance-attributes
     - import-outside-toplevel
+    - consider-using-generator
 
 mccabe:
   run: true
