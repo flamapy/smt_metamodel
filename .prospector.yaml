@@ -9,7 +9,7 @@ pylint:
     - consider-using-generator
 
 ignore-paths:
-  - flamapy/metamodels/smt_metamodel/transformations/graph_to_smt.py
+  - flamapy/metamodels/smt_metamodel/transformations/
 
 mccabe:
   run: true
