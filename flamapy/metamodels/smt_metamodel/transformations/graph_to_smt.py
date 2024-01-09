@@ -1,14 +1,13 @@
 from typing import Any
 
-from z3 import And, ArithRef, BoolRef, Implies, Int, Or, Real, Not, If
+from z3 import parse_smt2_string, Real
 
-from univers.versions import Version, PypiVersion, SemverVersion, MavenVersion, InvalidVersion
+from univers.versions import Version, PypiVersion, SemverVersion, MavenVersion
 from univers.version_range import (
     VersionRange,
     PypiVersionRange,
     NpmVersionRange,
     MavenVersionRange,
-    InvalidVersionRange
 )
 
 from flamapy.core.transformations import Transformation
@@ -16,245 +15,252 @@ from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
 
 
 class GraphToSMT(Transformation):
-
     @staticmethod
     def get_source_extension() -> str:
-        return 'neo4j'
+        return "neo4j"
 
     @staticmethod
     def get_destination_extension() -> str:
-        return 'smt'
+        return "smt"
 
     def __init__(
         self,
         source_data: dict[str, Any],
         file_name: str,
         package_manager: str,
-        agregator: str
+        agregator: str,
     ) -> None:
-        self.source_data: dict[str, list[dict[str, Any]]] = source_data
+        self.source_data: dict[str, Any] = source_data
         self.file_name: str = file_name
         self.agregator: str = agregator
         self.destination_model: PySMTModel = PySMTModel()
-        self.dependency_versions: dict[str, list[dict[str, Any]]] = (
-            self.match_dependency_versions()
+        self.version_type, self.range_type = self.get_version_range_type(
+            package_manager
         )
-        self.version_type, self.range_type = self.get_version_range_type(package_manager)
-        self.vars: dict[str, ArithRef] = {}
-        self.childs: dict[ArithRef, dict[ArithRef, list[int]]] = {}
-        self.parents: dict[ArithRef, dict[ArithRef, list[int]]] = {}
+        self.impacts: set[str] = set()
+        self.childs: dict[str, dict[str, set[int]]] = {}
+        self.parents: dict[str, dict[str, set[int]]] = {}
         self.directs: list[str] = []
-        self.domain: list[BoolRef] = []
-        # self.distributions: list[str] = []
-        self.ctcs: dict[ArithRef, dict[float, list[int]]] = {}
-
-    def match_dependency_versions(self) -> dict[str, Any]:
-        dependency_versions: dict[str, list[dict[str, Any]]] = {}
-        for rel_have in self.source_data['have']:
-            dependency = rel_have.pop('dependency')
-            dependency_versions.setdefault(dependency, []).append(rel_have)
-        return dependency_versions
+        self.var_domain: set[str] = set()
+        self.ctc_domain: str = ""
+        self.ctcs: dict[str, dict[float, set[int]]] = {}
+        self.filtered_versions: dict[str, dict[int, int]] = {}
 
     def transform(self) -> None:
-        impacts: list[ArithRef] = []
-        for rel_requires in self.source_data['requires']:
-            if rel_requires['parent_type'] == 'RequirementFile':
-                impacts.extend(self.transform_direct_package(rel_requires))
+        for rel_requires in self.source_data["requires"]:
+            if rel_requires["parent_version_name"] is None:
+                self.transform_direct_package(rel_requires)
             else:
-                impacts.extend(self.transform_indirect_package(rel_requires))
+                self.transform_indirect_package(rel_requires)
+        func_obj_name = f"func_obj_{self.file_name}"
+        file_risk_name = f"file_risk_{self.file_name}"
+        self.var_domain.add(
+            f"(declare-const {func_obj_name} Real) (declare-const {file_risk_name} Real)"
+        )
         self.build_indirect_constraints()
         self.build_impact_constraints()
-        self.domain.append(Real('CVSS' + self.file_name) == self.agregate(impacts))
-        func_obj_var = Real('func_obj_' + self.file_name)
-        self.domain.append(func_obj_var == self.mean(impacts))
-        self.destination_model.domain = And(self.domain)
-        self.destination_model.func_obj_var = func_obj_var
+        str_sum = self.sum()
+        self.ctc_domain += f"(= {file_risk_name} {self.agregate(str_sum)}) "
+        self.ctc_domain += f"(= {func_obj_name} {self.mean(str_sum)})"
+        self.destination_model.domain = parse_smt2_string(
+            f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))"
+        )
+        self.destination_model.func_obj_var = Real(f"func_obj_{self.file_name}")
+        file = open("model.txt", "w")
+        file.write(f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))")
+        file.close()
 
-    def transform_direct_package(self, rel_requires: dict[str, Any]) -> list[ArithRef]:
-        impacts: list[ArithRef] = []
-        self.directs.append(rel_requires['dependency'])
-        if rel_requires['dependency'] not in self.vars:
-            var = Int(rel_requires['dependency'])
-            self.vars[rel_requires['dependency']] = var
-            cvss_p_name = 'CVSS' + rel_requires['dependency']
-            cvss_p_var = Real(cvss_p_name)
-            self.vars[cvss_p_name] = cvss_p_var
-            impacts.append(cvss_p_var)
-        else:
-            var = self.vars[rel_requires['dependency']]
-            cvss_p_var = self.vars['CVSS' + rel_requires['dependency']]
+    def transform_direct_package(self, rel_requires: dict[str, Any]) -> None:
         filtered_versions = self.filter_versions(
-            rel_requires['dependency'],
-            rel_requires['constraints']
+            rel_requires["dependency"], rel_requires["constraints"]
         )
-        self.build_direct_contraint(var, filtered_versions)
-        self.transform_versions(filtered_versions, var, cvss_p_var)
-        return impacts
+        if filtered_versions:
+            self.directs.append(rel_requires["dependency"])
+            var_impact = f"impact_{rel_requires['dependency']}"
+            self.impacts.add(var_impact)
+            self.var_domain.add(
+                f"(declare-const {rel_requires['dependency']} Int) (declare-const {var_impact} Real)"
+            )
+            self.build_direct_contraint(
+                rel_requires["dependency"], list(filtered_versions.keys())
+            )
+            self.transform_versions(filtered_versions, rel_requires["dependency"])
 
-    def transform_indirect_package(
-        self,
-        rel_requires: dict[str, Any]
-    ) -> list[ArithRef]:
-        impacts: list[ArithRef] = []
-        if rel_requires['dependency'] not in self.vars:
-            var = Int(rel_requires['dependency'])
-            self.vars[rel_requires['dependency']] = var
-            cvss_p_name = 'CVSS' + rel_requires['dependency']
-            cvss_p_var = Real(cvss_p_name)
-            self.vars[cvss_p_name] = cvss_p_var
-            impacts.append(cvss_p_var)
-            self.ctcs.setdefault((var, cvss_p_var), {}).setdefault(0., []).append(-1)
-        else:
-            var = self.vars[rel_requires['dependency']]
-            cvss_p_var = self.vars['CVSS' + rel_requires['dependency']]
+    def transform_indirect_package(self, rel_requires: dict[str, Any]) -> None:
         filtered_versions = self.filter_versions(
-            rel_requires['dependency'],
-            rel_requires['constraints']
+            rel_requires["dependency"], rel_requires["constraints"]
         )
-        self.append_indirect_constraint(
-            var,
-            filtered_versions,
-            self.vars[self.get_parent_name(rel_requires['parent_id'])],
-            rel_requires['parent_count']
+        print(filtered_versions)
+        if filtered_versions:
+            var_impact = f"impact_{rel_requires['dependency']}"
+            self.impacts.add(var_impact)
+            self.var_domain.add(
+                f"(declare-const {rel_requires['dependency']} Int) (declare-const {var_impact} Real)"
+            )
+            self.var_domain.add(
+                f"(declare-const {rel_requires['parent_version_name']} Int)"
+            )
+            self.append_indirect_constraint(
+                rel_requires["dependency"],
+                list(filtered_versions.keys()),
+                rel_requires["parent_version_name"],
+                rel_requires["parent_count"],
+            )
+            self.transform_versions(filtered_versions, rel_requires["dependency"])
+
+    def transform_versions(self, versions: dict[int, int], var: str) -> None:
+        for version, impact in versions.items():
+            self.ctcs.setdefault(var, {}).setdefault(impact, set()).add(version)
+
+    def filter_versions(self, dependency: str, constraints: str) -> dict[int, int]:
+        filtered_versions = self.filtered_versions.setdefault(
+            f"{dependency}{constraints}", {}
         )
-        self.transform_versions(filtered_versions, var, cvss_p_var)
-        return impacts
-
-    def transform_versions(
-        self,
-        versions: list[dict[str, Any]],
-        var: ArithRef,
-        cvss_p_var: ArithRef
-    ) -> None:
-        for version in versions:
-            # key = str(var) + '-' + str(version['count'])
-            # if key not in self.distributions:
-            self.ctcs.setdefault((var, cvss_p_var), {}).setdefault(
-                version[self.agregator],
-                []
-            ).append(version['count'])
-            # self.distributions.append(key)
-
-    def get_parent_name(self, version_id: str) -> str:
-        for dependency, versions in self.dependency_versions.items():
-            for version in versions:
-                if version['id'] == version_id:
-                    return dependency
-        return ''
-
-    def filter_versions(self, dependency: str, constraints: str) -> list[dict[str, Any]]:
-        filtered_versions = []
-        if constraints != 'any':
-            for version in self.dependency_versions[dependency]:
+        if not filtered_versions:
+            if constraints != "any":
                 try:
-                    univers_version = self.version_type(version['release'])
-                except InvalidVersion:
-                    continue
-                check = True
-                try:
+                    constraints = constraints.replace(" ", "")
                     versions_range = self.range_type.from_native(constraints)
-                    check = check and univers_version in versions_range
-                except InvalidVersionRange:
-                    continue
-                if check:
-                    filtered_versions.append(version)
-            return filtered_versions
-        return self.dependency_versions[dependency]
+                except Exception as _:
+                    return filtered_versions
+                for version in self.source_data["have"][dependency]:
+                    check = True
+                    try:
+                        univers_version = self.version_type(version["release"])
+                        check = check and univers_version in versions_range
+                    except Exception as _:
+                        continue
+                    if check:
+                        filtered_versions[version["count"]] = version[self.agregator]
+            else:
+                for version in self.source_data["have"][dependency]:
+                    filtered_versions[version["count"]] = version[self.agregator]
+            self.filtered_versions[f"{dependency}{constraints}"] = filtered_versions
+        return filtered_versions
 
     def append_indirect_constraint(
-        self,
-        child: ArithRef,
-        versions: list[dict[str, Any]],
-        parent: ArithRef,
-        version: int
+        self, child: str, versions: list[int], parent: str, version: int
     ) -> None:
         if versions:
-            version_constraints = self.group_versions(
-                child,
-                [version['count'] for version in versions]
-            )
-            self.childs.setdefault(version_constraints, {}).setdefault(parent, []).append(version)
-            if str(child) not in self.directs:
-                self.parents.setdefault(child, {}).setdefault(parent, []).append(version)
+            self.childs.setdefault(
+                self.group_versions_descendent(child, versions), {}
+            ).setdefault(parent, set()).add(version)
+            if child not in self.directs:
+                self.parents.setdefault(child, {}).setdefault(parent, set()).add(
+                    version
+                )
 
-    def build_direct_contraint(self, var: ArithRef, versions: list[dict[str, Any]]) -> None:
+    def build_direct_contraint(self, var: str, versions: list[int]) -> None:
         if versions:
-            version_constraints = self.group_versions(
-                var,
-                [version['count'] for version in versions]
-            )
-            self.domain.append(version_constraints)
+            self.ctc_domain += f"{self.group_versions_descendent(var, versions)} "
         else:
-            self.domain.append(False)
+            self.ctc_domain += "false "
 
     def build_indirect_constraints(self) -> None:
         for versions, _ in self.childs.items():
             for parent, parent_versions in _.items():
-                self.domain.append(Implies(self.group_versions(parent, parent_versions), versions))
+                self.ctc_domain += f"(=> {self.group_versions_ascendent(parent, list(parent_versions))} {versions}) "
         for child, _ in self.parents.items():
             for parent, parent_versions in _.items():
-                self.domain.append(
-                    Implies(Not(self.group_versions(parent, parent_versions)), child == -1)
-                )
+                self.ctc_domain += f"(=> (not {self.group_versions_ascendent(parent, list(parent_versions))}) (= {child} -1)) "
 
     def build_impact_constraints(self) -> None:
-        for vars_, _ in self.ctcs.items():
+        for var, _ in self.ctcs.items():
             for impact, versions in _.items():
-                self.domain.append(
-                    Implies(self.group_versions(vars_[0], versions), vars_[1] == impact)
-                )
+                self.ctc_domain += f"(=> {self.group_versions_ascendent(var, list(versions))} (= impact_{var} {impact})) "
 
     # TODO: Possibility to add new metrics
-    def agregate(
-        self,
-        impacts: list[ArithRef],
-    ) -> ArithRef:
+    def agregate(self, str_sum: str) -> str:
         match self.agregator:
-            case 'mean':
-                return self.mean(impacts)
-            case 'weighted_mean':
-                return self.weighted_mean(impacts)
+            case "mean":
+                return self.mean(str_sum)
+            case "weighted_mean":
+                return self.weighted_mean()
+            case _:
+                return ""
+
+    def group_versions_descendent(self, var: str, versions: list[int]) -> str:
+        constraints: list[str] = []
+        current_group = [versions[0]]
+        for i in range(1, len(versions)):
+            if versions[i] == versions[i - 1] - 1:
+                current_group.append(versions[i])
+            else:
+                constraints.append(
+                    self.create_constraint_for_group_descendent(var, current_group)
+                )
+                current_group = [versions[i]]
+        constraints.append(
+            self.create_constraint_for_group_descendent(var, current_group)
+        )
+        return (
+            constraints[0] if len(constraints) == 1 else f"(or {" ".join(constraints)})"
+        )
+
+    def group_versions_ascendent(self, var: str, versions: list[int]) -> str:
+        constraints: list[str] = []
+        current_group = [versions[0]]
+        for i in range(1, len(versions)):
+            if versions[i] == versions[i - 1] + 1:
+                current_group.append(versions[i])
+            else:
+                constraints.append(
+                    self.create_constraint_for_group_ascendent(var, current_group)
+                )
+                current_group = [versions[i]]
+        constraints.append(
+            self.create_constraint_for_group_ascendent(var, current_group)
+        )
+        return (
+            constraints[0] if len(constraints) == 1 else f"(or {" ".join(constraints)})"
+        )
+
+    @staticmethod
+    def create_constraint_for_group_descendent(var: str, group: list[int]) -> str:
+        return (
+            f"(= {var} {group[0]})"
+            if len(group) == 1
+            else f"(and (>= {var} {group[-1]}) (<= {var} {group[0]}))"
+        )
+
+    @staticmethod
+    def create_constraint_for_group_ascendent(var: str, group: list[int]) -> str:
+        return (
+            f"(= {var} {group[0]})"
+            if len(group) == 1
+            else f"(and (>= {var} {group[0]}) (<= {var} {group[-1]}))"
+        )
 
     @staticmethod
     def get_version_range_type(package_manager: str) -> tuple[Version, VersionRange]:
         match package_manager:
-            case 'PIP':
+            case "PIP":
                 return PypiVersion, PypiVersionRange
-            case 'NPM':
+            case "NPM":
                 return SemverVersion, NpmVersionRange
-            case 'MVN':
+            case "MVN":
                 return MavenVersion, MavenVersionRange
         return PypiVersion, PypiVersionRange
 
-    @staticmethod
-    def group_versions(var: ArithRef, versions: list[int]) -> BoolRef:
-        min_ = min(versions)
-        max_ = max(versions)
-        constraints: list[BoolRef] = []
-        while min_ <= max_:
-            temporal_list = []
-            while min_ not in versions:
-                min_ += 1
-            while min_ in versions:
-                temporal_list.append(min_)
-                min_ += 1
-            if temporal_list:
-                if len(temporal_list) == 1:
-                    constraints.append(var == temporal_list[0])
-                else:
-                    constraints.append(And(var >= temporal_list[0], var <= temporal_list[-1]))
-        return Or(constraints)
+    def mean(self, str_sum: str) -> str:
+        if self.impacts:
+            num_non_zero = self.sum_if()
+            return f"(ite (= {num_non_zero} 0.0) 0.0 (/ {str_sum} {num_non_zero}))"
+        return "0.0"
 
-    @staticmethod
-    def mean(impacts: list[ArithRef]) -> ArithRef:
-        if impacts:
-            num_non_zero = sum([If(val == 0, 0, 1) for val in impacts])
-            return If(num_non_zero == 0., 0., sum(impacts) / num_non_zero)
-        return 0.
+    def sum_if(self) -> str:
+        sum_if = "(to_real (+ 0"
+        for impact in self.impacts:
+            sum_if += f" (ite (= {impact} 0.0) 0 1)"
+        return sum_if + "))"
 
-    @staticmethod
-    def weighted_mean(impacts: list[ArithRef]) -> ArithRef:
-        if impacts:
-            divisors = sum([val * 0.1 for val in impacts])
-            return If(divisors == 0., 0, sum([val**2 * 0.1 for val in impacts]) / divisors)
-        return 0.
+    def sum(self) -> str:
+        return f"(+ 0 {" ".join(self.impacts)})"
+
+    def weighted_mean(self) -> str:
+        if self.impacts:
+            divisors = (
+                f"(+ 0 {" ".join([f"(* {x} (/ 1.0 10.0))" for x in self.impacts])})"
+            )
+            return f"(ite (= {divisors} 0.0) 0.0 (/ (+ 0 {" ".join([f"(* (^ {x} 2.0) (/ 1.0 10.0))" for x in self.impacts])}) {divisors}))"
+        return "0.0"
