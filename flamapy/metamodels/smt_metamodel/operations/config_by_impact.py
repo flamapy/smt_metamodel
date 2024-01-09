@@ -6,11 +6,7 @@ from flamapy.metamodels.smt_metamodel.utils import config_sanitizer
 
 
 class ConfigByImpact(Operation):
-
-    def __init__(
-        self,
-        impact: float
-    ) -> None:
+    def __init__(self, impact: float) -> None:
         self.impact: float = impact
         self.result: list[dict[str, float | int]] = []
 
@@ -23,9 +19,7 @@ class ConfigByImpact(Operation):
             cvss_f = model.func_obj_var
             obj = Abs(cvss_f - self.impact)
             solver.minimize(obj)
-
-        formula = model.domain
-        solver.add(formula)
+        solver.add(model.domain)
         while solver.check() == sat:
             config = solver.model()
             sanitized_config = config_sanitizer(config)

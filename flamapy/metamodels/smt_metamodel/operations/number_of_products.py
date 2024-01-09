@@ -5,7 +5,6 @@ from flamapy.metamodels.smt_metamodel.models import PySMTModel
 
 
 class NumberOfProducts(Operation):
-
     def __init__(self) -> None:
         self.result: int = 0
 
@@ -13,18 +12,15 @@ class NumberOfProducts(Operation):
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
-        formula = model.domain
         solver = Solver()
-        solver.add(formula)
+        solver.add(model.domain)
         while solver.check() == sat:
             config = solver.model()
-
             block = []
             for var in config:
-                if str(var) != '/0':
+                if str(var) != "/0":
                     variable = var()
-                    if 'CVSS' not in str(variable):
+                    if "CVSS" not in str(variable):
                         block.append(config[var] != variable)
-
             solver.add(Or(block))
             self.result += 1

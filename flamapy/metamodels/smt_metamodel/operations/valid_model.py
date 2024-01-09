@@ -5,7 +5,6 @@ from flamapy.metamodels.smt_metamodel.models import PySMTModel
 
 
 class ValidModel(Operation):
-
     def __init__(self) -> None:
         self.result: bool = True
 
@@ -13,7 +12,6 @@ class ValidModel(Operation):
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
-        formula = model.domain
         solver = Solver()
-        solver.add(formula)
+        solver.add(model.domain)
         self.result = solver.check() == sat

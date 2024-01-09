@@ -8,5 +8,8 @@ pylint:
     - import-outside-toplevel
     - consider-using-generator
 
+ignore-paths:
+  - flamapy/metamodels/smt_metamodel/transformations/graph_to_smt.py
+
 mccabe:
   run: true

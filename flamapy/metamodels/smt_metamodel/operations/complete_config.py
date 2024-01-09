@@ -6,11 +6,7 @@ from flamapy.metamodels.smt_metamodel.utils import config_sanitizer
 
 
 class CompleteConfig(Operation):
-
-    def __init__(
-        self,
-        config: dict[str, int]
-    ) -> None:
+    def __init__(self, config: dict[str, int]) -> None:
         self.config: dict[str, int] = config
         self.result: list[dict[str, float | int]] = []
 
@@ -22,12 +18,9 @@ class CompleteConfig(Operation):
         if model.func_obj_var is not None:
             cvss_f = model.func_obj_var
             solver.minimize(cvss_f)
-
-        formula = model.domain
-        solver.add(formula)
+        solver.add(model.domain)
         for package, count in self.config.items():
             solver.add(Int(package) == count)
-
         while solver.check() == sat:
             config = solver.model()
             sanitized_config = config_sanitizer(config)

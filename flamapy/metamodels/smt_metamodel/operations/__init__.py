@@ -8,12 +8,12 @@ from .complete_config import CompleteConfig
 from .config_by_impact import ConfigByImpact
 
 __all__ = [
-    'ValidModel',
-    'NumberOfProducts',
-    'FilterConfigs',
-    'MaximizeImpact',
-    'MinimizeImpact',
-    'ValidConfig',
-    'CompleteConfig',
-    'ConfigByImpact'
+    "ValidModel",
+    "NumberOfProducts",
+    "FilterConfigs",
+    "MaximizeImpact",
+    "MinimizeImpact",
+    "ValidConfig",
+    "CompleteConfig",
+    "ConfigByImpact",
 ]

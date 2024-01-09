@@ -5,11 +5,7 @@ from flamapy.metamodels.smt_metamodel.models import PySMTModel
 
 
 class ValidConfig(Operation):
-
-    def __init__(
-        self,
-        config: dict[str, int]
-    ) -> None:
+    def __init__(self, config: dict[str, int]) -> None:
         self.config: dict[str, int] = config
         self.result: bool = True
 
@@ -17,9 +13,8 @@ class ValidConfig(Operation):
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
-        formula = model.domain
         solver = Solver()
-        solver.add(formula)
+        solver.add(model.domain)
         for package, count in self.config.items():
             solver.add(Int(package) == count)
         self.result = solver.check() == sat
