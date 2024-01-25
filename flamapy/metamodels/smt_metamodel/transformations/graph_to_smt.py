@@ -26,12 +26,10 @@ class GraphToSMT(Transformation):
     def __init__(
         self,
         source_data: dict[str, Any],
-        file_name: str,
         package_manager: str,
         agregator: str,
     ) -> None:
         self.source_data: dict[str, Any] = source_data
-        self.file_name: str = file_name
         self.agregator: str = agregator
         self.destination_model: PySMTModel = PySMTModel()
         self.version_type, self.range_type = self.get_version_range_type(
@@ -52,8 +50,8 @@ class GraphToSMT(Transformation):
                 self.transform_direct_package(rel_requires)
             else:
                 self.transform_indirect_package(rel_requires)
-        func_obj_name = f"func_obj_{self.file_name}"
-        file_risk_name = f"file_risk_{self.file_name}"
+        func_obj_name = f"func_obj_{self.source_data["name"]}"
+        file_risk_name = f"file_risk_{self.source_data["name"]}"
         self.var_domain.add(
             f"(declare-const {func_obj_name} Real) (declare-const {file_risk_name} Real)"
         )
@@ -65,7 +63,7 @@ class GraphToSMT(Transformation):
         self.destination_model.domain = parse_smt2_string(
             f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))"
         )
-        self.destination_model.func_obj_var = Real(f"func_obj_{self.file_name}")
+        self.destination_model.func_obj_var = Real(f"func_obj_{self.source_data["name"]}")
         file = open("model.txt", "w")
         file.write(f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))")
         file.close()
