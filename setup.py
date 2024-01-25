@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="flamapy-smt",
-    version="1.3.1",
+    version="1.3.2",
     author="Antonio Germán Márquez Trujillo",
     author_email="amtrujillo@us.es",
     description="This repo host the SMT model concrete classes",
@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.10",
-    install_requires=["z3-solver==4.12.4.0", "flamapy==1.1.3", "univers==30.11.0"],
+    install_requires=["z3-solver==4.12.5.0", "flamapy==1.1.3", "univers==30.11.0"],
     tests_requires=[
         "prospector[with_everything]==1.10.2",
         "mypy==0.982",
