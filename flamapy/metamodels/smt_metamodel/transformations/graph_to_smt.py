@@ -1,17 +1,15 @@
 from typing import Any
 
-from z3 import parse_smt2_string, Real
-
-from univers.versions import Version, PypiVersion, SemverVersion, MavenVersion
-from univers.version_range import (
-    VersionRange,
-    PypiVersionRange,
-    NpmVersionRange,
-    MavenVersionRange,
-)
-
 from flamapy.core.transformations import Transformation
 from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
+from univers.version_range import (
+    MavenVersionRange,
+    NpmVersionRange,
+    PypiVersionRange,
+    VersionRange,
+)
+from univers.versions import MavenVersion, PypiVersion, SemverVersion, Version
+from z3 import Real, parse_smt2_string
 
 
 class GraphToSMT(Transformation):
@@ -44,7 +42,13 @@ class GraphToSMT(Transformation):
         self.ctcs: dict[str, dict[float, set[int]]] = {}
         self.filtered_versions: dict[str, dict[int, int]] = {}
 
-    def transform(self) -> None:
+    def convert(self, model_text: str) -> None:
+        self.destination_model.domain = parse_smt2_string(model_text)
+        self.destination_model.func_obj_var = Real(
+            f"func_obj_{self.source_data["name"]}"
+        )
+
+    def transform(self) -> str:
         for rel_requires in self.source_data["requires"]:
             if rel_requires["parent_version_name"] is None:
                 self.transform_direct_package(rel_requires)
@@ -60,13 +64,12 @@ class GraphToSMT(Transformation):
         str_sum = self.sum()
         self.ctc_domain += f"(= {file_risk_name} {self.agregate(str_sum)}) "
         self.ctc_domain += f"(= {func_obj_name} {self.mean(str_sum)})"
-        self.destination_model.domain = parse_smt2_string(
-            f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))"
+        model_text = f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))"
+        self.destination_model.domain = parse_smt2_string(model_text)
+        self.destination_model.func_obj_var = Real(
+            f"func_obj_{self.source_data["name"]}"
         )
-        self.destination_model.func_obj_var = Real(f"func_obj_{self.source_data["name"]}")
-        file = open("model.txt", "w")
-        file.write(f"{" ".join(self.var_domain)}(assert (and {self.ctc_domain}))")
-        file.close()
+        return model_text
 
     def transform_direct_package(self, rel_requires: dict[str, Any]) -> None:
         filtered_versions = self.filter_versions(
@@ -76,9 +79,8 @@ class GraphToSMT(Transformation):
             self.directs.append(rel_requires["dependency"])
             var_impact = f"impact_{rel_requires['dependency']}"
             self.impacts.add(var_impact)
-            self.var_domain.add(
-                f"(declare-const {rel_requires['dependency']} Int) (declare-const {var_impact} Real)"
-            )
+            self.var_domain.add(f"(declare-const {rel_requires['dependency']} Int)")
+            self.var_domain.add(f"(declare-const {var_impact} Real)")
             self.build_direct_contraint(
                 rel_requires["dependency"], list(filtered_versions.keys())
             )
@@ -88,13 +90,11 @@ class GraphToSMT(Transformation):
         filtered_versions = self.filter_versions(
             rel_requires["dependency"], rel_requires["constraints"]
         )
-        print(filtered_versions)
         if filtered_versions:
             var_impact = f"impact_{rel_requires['dependency']}"
             self.impacts.add(var_impact)
-            self.var_domain.add(
-                f"(declare-const {rel_requires['dependency']} Int) (declare-const {var_impact} Real)"
-            )
+            self.var_domain.add(f"(declare-const {rel_requires['dependency']} Int)")
+            self.var_domain.add(f"(declare-const {var_impact} Real)")
             self.var_domain.add(
                 f"(declare-const {rel_requires['parent_version_name']} Int)"
             )
