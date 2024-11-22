@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout git repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Automated Version Bump
         id: changelog
@@ -19,14 +19,15 @@ jobs:
         with:
           token: ${{secrets.GIT_TOKEN}}
           tag: ${{github.ref_name}}
-          writeToFile: 'false'
+          writeToFile: false
           excludeTypes: other
 
       - name: Get variables
         id: get_variables
         run: |
-          echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-          echo ::set-output name=IS_PRERELEASE::"${{contains(github.ref, 'dev')}}"
+          echo "{VERSION}={${GITHUB_REF/refs\/tags\//}}"  >> $GITHUB_OUTPUT
+          echo "{IS_PRERELEASE}={"${{contains(github.ref, 'dev')}}"}"  >> $GITHUB_OUTPUT
+
       - name: Publish release github
         uses: softprops/action-gh-release@v1
         with:
