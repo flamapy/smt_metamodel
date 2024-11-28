@@ -49,11 +49,21 @@ class GraphToSMT(Transformation):
         )
 
     def transform(self) -> str:
-        for rel_requires in self.source_data["requires"]:
-            if rel_requires["parent_version_name"] is None:
-                self.transform_direct_package(rel_requires)
-            else:
-                self.transform_indirect_package(rel_requires)
+        for direct_requires in self.source_data["requires"]["direct"]:
+            direct_version_counts = self.transform_direct_package(direct_requires)
+            if direct_version_counts:
+                rels_to_delete = []
+                for indirect_requires in self.source_data["requires"]["indirect"]:
+                    if (
+                        indirect_requires["parent_version_name"] == direct_requires["dependency"] and
+                        indirect_requires["parent_count"] not in direct_version_counts
+                    ):
+                        rels_to_delete.append(indirect_requires)
+                for _ in rels_to_delete:
+                    self.source_data["requires"]["indirect"].remove(_)
+
+        for indirect_requires in self.source_data["requires"]["indirect"]:
+            self.transform_indirect_package(indirect_requires)
         func_obj_name = f"func_obj_{self.source_data["name"]}"
         file_risk_name = f"file_risk_{self.source_data["name"]}"
         self.var_domain.add(
@@ -71,7 +81,7 @@ class GraphToSMT(Transformation):
         )
         return model_text
 
-    def transform_direct_package(self, rel_requires: dict[str, Any]) -> None:
+    def transform_direct_package(self, rel_requires: dict[str, Any]) -> list[int]:
         filtered_versions = self.filter_versions(
             rel_requires["dependency"], rel_requires["constraints"]
         )
@@ -85,6 +95,7 @@ class GraphToSMT(Transformation):
                 rel_requires["dependency"], list(filtered_versions.keys())
             )
             self.transform_versions(filtered_versions, rel_requires["dependency"])
+        return list(filtered_versions.keys())
 
     def transform_indirect_package(self, rel_requires: dict[str, Any]) -> None:
         filtered_versions = self.filter_versions(
@@ -165,6 +176,8 @@ class GraphToSMT(Transformation):
     def build_impact_constraints(self) -> None:
         for var, _ in self.ctcs.items():
             for impact, versions in _.items():
+                if impact == 0.:
+                    versions.add(-1)
                 self.ctc_domain += f"(=> {self.group_versions_ascendent(var, list(versions))} (= impact_{var} {impact})) "
 
     # TODO: Possibility to add new metrics
