@@ -49,21 +49,23 @@ class GraphToSMT(Transformation):
         )
 
     def transform(self) -> str:
-        for direct_requires in self.source_data["requires"]["direct"]:
-            direct_version_counts = self.transform_direct_package(direct_requires)
-            if direct_version_counts:
-                rels_to_delete = []
-                for indirect_requires in self.source_data["requires"]["indirect"]:
-                    if (
-                        indirect_requires["parent_version_name"] == direct_requires["dependency"] and
-                        indirect_requires["parent_count"] not in direct_version_counts
-                    ):
-                        rels_to_delete.append(indirect_requires)
-                for _ in rels_to_delete:
-                    self.source_data["requires"]["indirect"].remove(_)
-
-        for indirect_requires in self.source_data["requires"]["indirect"]:
-            self.transform_indirect_package(indirect_requires)
+        if "direct" in self.source_data["requires"]:
+            for direct_requires in self.source_data["requires"]["direct"]:
+                direct_version_counts = self.transform_direct_package(direct_requires)
+                if direct_version_counts:
+                    rels_to_delete = []
+                    if "indirect" in self.source_data["requires"]:
+                        for indirect_requires in self.source_data["requires"]["indirect"]:
+                            if (
+                                indirect_requires["parent_version_name"] == direct_requires["dependency"] and
+                                indirect_requires["parent_count"] not in direct_version_counts
+                            ):
+                                rels_to_delete.append(indirect_requires)
+                        for _ in rels_to_delete:
+                            self.source_data["requires"]["indirect"].remove(_)
+        if "indirect" in self.source_data["requires"]:
+            for indirect_requires in self.source_data["requires"]["indirect"]:
+                self.transform_indirect_package(indirect_requires)
         func_obj_name = f"func_obj_{self.source_data["name"]}"
         file_risk_name = f"file_risk_{self.source_data["name"]}"
         self.var_domain.add(

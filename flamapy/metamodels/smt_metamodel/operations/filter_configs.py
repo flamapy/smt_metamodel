@@ -1,4 +1,4 @@
-from z3 import And, Or, Solver, sat
+from z3 import And, Or, Solver, sat, unknown
 
 from flamapy.core.operations import Operation
 from flamapy.metamodels.smt_metamodel.models import PySMTModel
@@ -10,9 +10,9 @@ class FilterConfigs(Operation):
         self.max_threshold: float = max_threshold
         self.min_threshold: float = min_threshold
         self.limit: int = limit
-        self.result: list[dict[str, float | int]] = []
+        self.result: list[dict[str, float | int]] | str = []
 
-    def get_result(self) -> list[dict[str, float | int]]:
+    def get_result(self) -> list[dict[str, float | int]] | str:
         return self.result
 
     def execute(self, model: PySMTModel) -> None:
@@ -21,11 +21,13 @@ class FilterConfigs(Operation):
             max_ctc = cvss_f <= self.max_threshold
             min_ctc = cvss_f >= self.min_threshold
         solver = Solver()
+        solver.set("timeout", 3000)
         solver.add(And([model.domain, max_ctc, min_ctc]))
         while len(self.result) < self.limit and solver.check() == sat:
             config = solver.model()
             sanitized_config = config_sanitizer(config)
-            self.result.append(sanitized_config)
+            if isinstance(self.result, list):
+                self.result.append(sanitized_config)
             block = []
             for var in config:
                 if str(var) != "/0":
@@ -33,3 +35,9 @@ class FilterConfigs(Operation):
                     if "CVSS" not in str(variable):
                         block.append(config[var] != variable)
             solver.add(Or(block))
+        if solver.check() == unknown:
+            self.result = (
+                "Execution timed out after 3 seconds. "
+                "The complexity of the model is too high, "
+                "try lowering the maximum level of the graph."
+            )
