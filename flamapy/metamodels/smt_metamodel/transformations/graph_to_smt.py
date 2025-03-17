@@ -3,12 +3,22 @@ from typing import Any
 from flamapy.core.transformations import Transformation
 from flamapy.metamodels.smt_metamodel.models.pysmt_model import PySMTModel
 from univers.version_range import (
+    CargoVersionRange,
+    GemVersionRange,
     MavenVersionRange,
     NpmVersionRange,
     PypiVersionRange,
     VersionRange,
+    NugetVersionRange
 )
-from univers.versions import MavenVersion, PypiVersion, SemverVersion, Version
+from univers.versions import (
+    MavenVersion,
+    PypiVersion,
+    RubygemsVersion,
+    NugetVersion,
+    SemverVersion,
+    Version,
+)
 from z3 import Real, parse_smt2_string
 
 
@@ -24,14 +34,14 @@ class GraphToSMT(Transformation):
     def __init__(
         self,
         source_data: dict[str, Any],
-        package_manager: str,
+        node_type: str,
         agregator: str,
     ) -> None:
         self.source_data: dict[str, Any] = source_data
         self.agregator: str = agregator
         self.destination_model: PySMTModel = PySMTModel()
         self.version_type, self.range_type = self.get_version_range_type(
-            package_manager
+            node_type
         )
         self.impacts: set[str] = set()
         self.childs: dict[str, dict[str, set[int]]] = {}
@@ -49,23 +59,11 @@ class GraphToSMT(Transformation):
         )
 
     def transform(self) -> str:
-        if "direct" in self.source_data["requires"]:
-            for direct_requires in self.source_data["requires"]["direct"]:
-                direct_version_counts = self.transform_direct_package(direct_requires)
-                if direct_version_counts:
-                    rels_to_delete = []
-                    if "indirect" in self.source_data["requires"]:
-                        for indirect_requires in self.source_data["requires"]["indirect"]:
-                            if (
-                                indirect_requires["parent_version_name"] == direct_requires["dependency"] and
-                                indirect_requires["parent_count"] not in direct_version_counts
-                            ):
-                                rels_to_delete.append(indirect_requires)
-                        for _ in rels_to_delete:
-                            self.source_data["requires"]["indirect"].remove(_)
-        if "indirect" in self.source_data["requires"]:
-            for indirect_requires in self.source_data["requires"]["indirect"]:
-                self.transform_indirect_package(indirect_requires)
+        for rel_requires in self.source_data["requires"]:
+            if rel_requires["parent_version_name"] is None:
+                self.transform_direct_package(rel_requires)
+            else:
+                self.transform_indirect_package(rel_requires)
         func_obj_name = f"func_obj_{self.source_data["name"]}"
         file_risk_name = f"file_risk_{self.source_data["name"]}"
         self.var_domain.add(
@@ -83,7 +81,7 @@ class GraphToSMT(Transformation):
         )
         return model_text
 
-    def transform_direct_package(self, rel_requires: dict[str, Any]) -> list[int]:
+    def transform_direct_package(self, rel_requires: dict[str, Any]) -> None:
         filtered_versions = self.filter_versions(
             rel_requires["dependency"], rel_requires["constraints"]
         )
@@ -97,7 +95,6 @@ class GraphToSMT(Transformation):
                 rel_requires["dependency"], list(filtered_versions.keys())
             )
             self.transform_versions(filtered_versions, rel_requires["dependency"])
-        return list(filtered_versions.keys())
 
     def transform_indirect_package(self, rel_requires: dict[str, Any]) -> None:
         filtered_versions = self.filter_versions(
@@ -178,8 +175,6 @@ class GraphToSMT(Transformation):
     def build_impact_constraints(self) -> None:
         for var, _ in self.ctcs.items():
             for impact, versions in _.items():
-                if impact == 0.:
-                    versions.add(-1)
                 self.ctc_domain += f"(=> {self.group_versions_ascendent(var, list(versions))} (= impact_{var} {impact})) "
 
     # TODO: Possibility to add new metrics
@@ -245,15 +240,21 @@ class GraphToSMT(Transformation):
         )
 
     @staticmethod
-    def get_version_range_type(package_manager: str) -> tuple[Version, VersionRange]:
-        match package_manager:
-            case "PIP":
+    def get_version_range_type(node_type: str) -> tuple[Version, VersionRange]:
+        match node_type:
+            case "PyPIPackage":
                 return PypiVersion, PypiVersionRange
-            case "NPM":
+            case "NPMPackage":
                 return SemverVersion, NpmVersionRange
-            case "MVN":
+            case "CargoPackage":
+                return SemverVersion, CargoVersionRange
+            case "MavenPackage":
                 return MavenVersion, MavenVersionRange
-        return PypiVersion, PypiVersionRange
+            case "RubyGemsPackage":
+                return RubygemsVersion, GemVersionRange
+            case "NuGetPackage":
+                return NugetVersion, NugetVersionRange
+        return Version, VersionRange
 
     def mean(self, str_sum: str) -> str:
         if self.impacts:
