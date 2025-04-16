@@ -59,10 +59,12 @@ class GraphToSMT(Transformation):
         )
 
     def transform(self) -> str:
-        for rel_requires in self.source_data["requires"]["direct"]:
-            self.transform_direct_package(rel_requires)
-        for rel_requires in self.source_data["requires"]["indirect"]:
-            self.transform_indirect_package(rel_requires)
+        if "direct" in self.source_data["requires"]:
+            for rel_requires in self.source_data["requires"]["direct"]:
+                self.transform_direct_package(rel_requires)
+        if "indirect" in self.source_data["requires"]:
+            for rel_requires in self.source_data["requires"]["indirect"]:
+                self.transform_indirect_package(rel_requires)
         func_obj_name = f"func_obj_{self.source_data["name"]}"
         file_risk_name = f"file_risk_{self.source_data["name"]}"
         self.var_domain.add(
